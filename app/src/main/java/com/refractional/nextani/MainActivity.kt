@@ -15,15 +15,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.room.Room
 import com.refractional.nextani.ui.theme.NextAniTheme
 import com.refractional.nextani.utils.ApiManager
+import com.refractional.nextani.utils.database.DbManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val apiManager = ApiManager(this)
+        val db = Room.databaseBuilder(
+            applicationContext,
+            DbManager::class.java, "default",
+        ).build()
+
+        val apiManager = ApiManager(this, db)
         enableEdgeToEdge()
+
         setContent {
             NextAniTheme {
                 Scaffold(

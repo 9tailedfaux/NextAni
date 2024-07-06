@@ -1,5 +1,7 @@
 package com.refractional.nextani
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -33,10 +36,10 @@ fun Login(modifier: Modifier = Modifier, apiManager: ApiManager, isLoading: Muta
     ConstraintLayout(
         modifier = Modifier.fillMaxSize()
     ) {
-        val (message, loginCol) = createRefs()
-
+        val (plsLogin, loginCol, plsPublic) = createRefs()
+        val context = LocalContext.current
         Card(
-            modifier = Modifier.constrainAs(message) {
+            modifier = Modifier.constrainAs(plsLogin) {
                 top.linkTo(parent.top)
             }
         ) {
@@ -50,7 +53,7 @@ fun Login(modifier: Modifier = Modifier, apiManager: ApiManager, isLoading: Muta
                     modifier = Modifier.padding(horizontal = 20.dp)
                 )
                 Text(
-                    text = "Please log in to your AniList account\nWe will not ask for your password",
+                    text = "Please enter your AniList username\nWe will not ask for your password",
                     modifier = Modifier.padding(end = 20.dp, top = 10.dp, bottom = 10.dp)
                 )
             }
@@ -60,8 +63,8 @@ fun Login(modifier: Modifier = Modifier, apiManager: ApiManager, isLoading: Muta
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.constrainAs(loginCol) {
-                top.linkTo(message.bottom)
-                bottom.linkTo(parent.bottom)
+                top.linkTo(plsLogin.bottom)
+                bottom.linkTo(plsPublic.top)
                 start.linkTo(parent.start)
                 end.linkTo(parent.end)
             }
@@ -89,6 +92,40 @@ fun Login(modifier: Modifier = Modifier, apiManager: ApiManager, isLoading: Muta
                     .wrapContentWidth()
             ) {
                 Text(text = "Login")
+            }
+        }
+
+        Card(
+            modifier = Modifier.constrainAs(plsPublic) {
+                bottom.linkTo(parent.bottom)
+                top.linkTo(loginCol.bottom)
+            }
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ){
+                Icon(
+                    painter = painterResource(id = R.drawable.warning_24dp_fill0_wght400_grad0_opsz24), contentDescription = "Warning icon",
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+                Text(
+                    text = "Your AniList account must be public\nMake sure your account is set to public",
+                    modifier = Modifier.padding(end = 20.dp, top = 10.dp, bottom = 10.dp)
+                )
+            }
+            Button(
+                onClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://anilist.co/settings/account"))
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 10.dp)
+            ) {
+                Text(text = "Account Settings")
             }
         }
     }

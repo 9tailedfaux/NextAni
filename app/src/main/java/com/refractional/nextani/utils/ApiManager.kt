@@ -1,22 +1,50 @@
 package com.refractional.nextani.utils
 
 import android.content.Context
+import android.widget.Toast
 import com.android.volley.VolleyError
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
+import com.refractional.nextani.utils.database.DbManager
+import com.refractional.nextani.utils.database.dao.RatedAnimeDao
+import com.refractional.nextani.utils.database.dao.RatedAnimeDao_Impl
+import com.refractional.nextani.utils.database.model.RatedAnime
 import org.json.JSONObject
 
-class ApiManager(context: Context) {
+class ApiManager(private val context: Context, private val db: DbManager) {
 
     private val volley = Volley.newRequestQueue(context)
     fun refreshUserData(username: String = "9tailedfaux", onSuccess: (JSONObject) -> Unit = {}, onError: (VolleyError) -> Unit = {}, onComplete: () -> Unit = {}) {
         val request = request(
             {
-                println(it)
+                val user = it.getJSONObject("data")
+                    .getJSONObject("Page")
+                    .getJSONArray("users")
+                    .getJSONObject(0)
+
+                val ratings = user.getJSONObject("statistics")
+                    .getJSONObject("anime")
+                    .getJSONArray("scores")
+
+                val ratingsParsed: ArrayList<RatedAnime> = arrayListOf()
+
+                for (i in 0 ..< ratings.length()) {
+                    val current = ratings.getJSONObject(i)
+                    val score = current.getInt("score")
+                    val ids = current.getJSONArray("mediaIds")
+                    for (j in 0 ..< ids.length()) {
+                        ratingsParsed.add(RatedAnime(ids.getInt(j), score))
+                    }
+                }
+
+                val dao = db.ratedAnimeDao()
+                dao.deleteAll()
+                dao.insertAll(ratedAnime = ratingsParsed.toTypedArray())
+
                 onSuccess(it)
             },
             {
-                println(it.message)
+                Toast.makeText(context, it.message, Toast.LENGTH_LONG).show()
                 onError(it)
             },
             onComplete,

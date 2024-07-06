@@ -14,6 +14,9 @@ interface RatedAnimeDao {
     @Query("SELECT * FROM ratedanime WHERE id IN (:ids)")
     fun getAllByID(ids: IntArray): List<RatedAnime>
 
+    @Query("DELETE FROM ratedanime WHERE 1=1")
+    fun deleteAll()
+
     @Insert
     fun insertAll(vararg ratedAnime: RatedAnime)
 
