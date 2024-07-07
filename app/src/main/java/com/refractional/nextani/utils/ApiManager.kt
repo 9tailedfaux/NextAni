@@ -1,6 +1,7 @@
 package com.refractional.nextani.utils
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import com.android.volley.VolleyError
 import com.android.volley.toolbox.StringRequest
@@ -8,87 +9,182 @@ import com.android.volley.toolbox.Volley
 import com.refractional.nextani.utils.database.DbManager
 import com.refractional.nextani.utils.database.dao.RatedAnimeDao
 import com.refractional.nextani.utils.database.dao.RatedAnimeDao_Impl
+import com.refractional.nextani.utils.database.model.AnilistRecc
 import com.refractional.nextani.utils.database.model.RatedAnime
+import org.json.JSONArray
 import org.json.JSONObject
 
 class ApiManager(private val context: Context, private val db: DbManager) {
 
     private val volley = Volley.newRequestQueue(context)
-    fun refreshUserData(username: String = "9tailedfaux", onSuccess: (JSONObject) -> Unit = {}, onError: (VolleyError) -> Unit = {}, onComplete: () -> Unit = {}) {
+    private val ratedAnimeDao = db.ratedAnimeDao()
+    //FIXME my username is in here as a default
+    fun refreshUserData(
+        username: String = "9tailedfaux",
+        onSuccess: () -> Unit = {},
+        onError: (VolleyError) -> Unit = {},
+        onComplete: () -> Unit = {},
+        pageNum: Int = 1
+    ) {
         val request = request(
-            {
-                val user = it.getJSONObject("data")
+            onSuccess = {
+                val list = it.getJSONObject("data")
                     .getJSONObject("Page")
-                    .getJSONArray("users")
-                    .getJSONObject(0)
+                    .getJSONArray("mediaList")
 
-                val ratings = user.getJSONObject("statistics")
-                    .getJSONObject("anime")
-                    .getJSONArray("scores")
+                //if media list is empty
+                if (list.length() < 1) {
+                    onSuccess()
+                    onComplete()
+                } else {
+                    for (i in 0..<list.length()) {
+                        val entry = list.getJSONObject(i)
+                        val parsed = parseMedia(entry = entry)!!
+                        ratedAnimeDao.deleteId(parsed.id)
+                        ratedAnimeDao.insertAll(parsed)
 
-                val ratingsParsed: ArrayList<RatedAnime> = arrayListOf()
-
-                for (i in 0 ..< ratings.length()) {
-                    val current = ratings.getJSONObject(i)
-                    val score = current.getInt("score")
-                    val ids = current.getJSONArray("mediaIds")
-                    for (j in 0 ..< ids.length()) {
-                        ratingsParsed.add(RatedAnime(ids.getInt(j), score))
+                        parseRecs(
+                            parent = parsed,
+                            edges = entry.getJSONObject("media").getJSONObject("recommendations").getJSONArray("edges")
+                        )
                     }
+                    refreshUserData(
+                        username = username,
+                        onSuccess = onSuccess,
+                        onError = onError,
+                        onComplete = onComplete,
+                        pageNum = pageNum + 1
+                    )
                 }
-
-                val dao = db.ratedAnimeDao()
-                dao.deleteAll()
-                dao.insertAll(ratedAnime = ratingsParsed.toTypedArray())
-
-                onSuccess(it)
             },
-            {
-                Toast.makeText(context, it.message, Toast.LENGTH_LONG).show()
+            onError = {
+                Log.e("Refresh user data", it.message ?: "no error message")
                 onError(it)
+                onComplete()
             },
-            onComplete,
-            userQuery(username, 1)
+            query = userListQuery(username, 1)
         )
         volley.add(request)
     }
 
-    fun refreshRelations(aniID: String) {
+    private fun parseRecs(parent: RatedAnime, edges: JSONArray) {
+        for (i in 0..<edges.length()) {
 
+            val node = edges.getJSONObject(i).getJSONObject("node")
+            val id = node.getJSONObject("mediaRecommendation").getInt("id")
+
+            fetchAndUpdateMediaById(
+                id,
+                onSuccess = {
+                    val recc = AnilistRecc(
+                        source = parent,
+                        recc = it,
+                        rating = node.getInt("rating")
+                    )
+
+                    db.anilistReccDao().insertAll(recc)
+                }
+            )
+        }
+    }
+
+    private fun fetchAndUpdateMediaById(
+        id: Int,
+        onSuccess: (RatedAnime) -> Unit = {}
+    ) {
+        request(
+            onSuccess = {
+                //parse it
+                val media = it.getJSONObject("data").getJSONObject("Media")
+                val parsed = parseMedia(_media = media)!!
+                ratedAnimeDao.deleteId(parsed.id)
+                ratedAnimeDao.insertAll(parsed)
+                onSuccess(parsed)
+            },
+            query = singleAnimeQuery(id),
+            onError = {
+                Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                Log.e("Fetch and update media by ID", it.message ?: "no error message")
+            }
+        )
+    }
+
+    private fun parseMedia(entry: JSONObject? = null, _media: JSONObject? = null): RatedAnime? {
+        if (entry == null && _media == null) return null
+        val media = if (entry != null) entry.getJSONObject("media") else _media!!
+
+        return RatedAnime(
+            id = media.getInt("id"),
+            rating = entry?.getDouble("score"),
+            avgScore = media.getInt("averageScore"),
+            status = entry?.getString("status"),
+            type = media.getString("type"),
+            format = media.getString("format"),
+            title = media.getJSONObject("title").getString("userPreferred"),
+            popularity = media.getInt("popularity"),
+            year = media.getInt("seasonYear"),
+            airStatus = media.getString("status"),
+            imgUrl = media.getJSONObject("coverImage").getString("extraLarge"),
+            color = media.getJSONObject("coverImage").getString("color"),
+            episodes = media.getInt("episodes")
+        )
     }
 
     companion object {
         val baseURL = "https://graphql.anilist.co"
-        val userListQuery = "query {\n" +
-                "  Page(page: 1) {\n" +
-                "    mediaList(userName: \"9tailedfaux\", type: ANIME, sort: SCORE_DESC, status: COMPLETED) {\n" +
+        fun userListQuery(username: String, pageNum: Int) =
+            "query {\n" +
+                "  Page(page: $pageNum) {\n" +
+                "    mediaList (userName: $username, type: ANIME) {\n" +
+                "      userId\n" +
+                "      score\n" +
+                "      status\n" +
                 "      media {\n" +
+                "        id\n" +
+                "        type\n" +
+                "        format\n" +
                 "        title {\n" +
                 "          userPreferred\n" +
                 "        }\n" +
-                "        status\n" +
-                "        format\n" +
-                "        seasonYear\n" +
-                "        episodes\n" +
                 "        popularity\n" +
-                "        score\n" +
+                "        averageScore\n" +
+                "        seasonYear\n" +
+                "        status\n" +
+                "        episodes\n" +
+                "        coverImage {\n" +
+                "          extraLarge\n" +
+                "          color\n" +
+                "        }\n" +
                 "        recommendations {\n" +
                 "          edges {\n" +
                 "            node {\n" +
                 "              rating\n" +
                 "              mediaRecommendation {\n" +
                 "                id\n" +
-                "                title {\n" +
-                "                  userPreferred\n" +
-                "                }\n" +
                 "              }\n" +
                 "            }\n" +
                 "          }\n" +
                 "        }\n" +
                 "      }\n" +
                 "    }\n" +
-                "    pageInfo {\n" +
-                "      hasNextPage\n" +
+                "  }\n" +
+                "}"
+        fun singleAnimeQuery(id: Int) = "query {\n" +
+                "  Media (id: $id) {\n" +
+                "    id\n" +
+                "    title {\n" +
+                "      userPreferred\n" +
+                "    }\n" +
+                "    type\n" +
+                "    format\n" +
+                "    popularity\n" +
+                "    averageScore\n" +
+                "    seasonYear\n" +
+                "    status\n" +
+                "    episodes\n" +
+                "    coverImage {\n" +
+                "      extraLarge\n" +
+                "      color\n" +
                 "    }\n" +
                 "  }\n" +
                 "}"
@@ -112,8 +208,8 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
         fun request(
             onSuccess: (JSONObject) -> Unit,
-            onError: (VolleyError) -> Unit,
-            onComplete: () -> Unit,
+            onError: (VolleyError) -> Unit = {},
+            onComplete: () -> Unit = {},
             query: String
         ) = object : StringRequest(
             Method.POST, baseURL,

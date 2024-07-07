@@ -17,6 +17,9 @@ interface RatedAnimeDao {
     @Query("DELETE FROM ratedanime WHERE 1=1")
     fun deleteAll()
 
+    @Query("DELETE FROM ratedanime WHERE id = (:id)")
+    fun deleteId(id: Int)
+
     @Insert
     fun insertAll(vararg ratedAnime: RatedAnime)
 
