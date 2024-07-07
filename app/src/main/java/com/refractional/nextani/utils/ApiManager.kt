@@ -7,11 +7,10 @@ import com.android.volley.VolleyError
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.refractional.nextani.utils.database.DbManager
-import com.refractional.nextani.utils.database.dao.RatedAnimeDao
-import com.refractional.nextani.utils.database.dao.RatedAnimeDao_Impl
 import com.refractional.nextani.utils.database.model.AnilistRecc
 import com.refractional.nextani.utils.database.model.RatedAnime
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 
 class ApiManager(private val context: Context, private val db: DbManager) {
@@ -109,29 +108,41 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         )
     }
 
+    /**
+     * @param entry the entry JSON object. null by default
+     * @param _media the media JSON object. null by default
+     * @return parsed RatedAnime object. Returns null if both parameters are null or not provided. Returns null if JSON objects are formatted unexpectedly
+     */
     private fun parseMedia(entry: JSONObject? = null, _media: JSONObject? = null): RatedAnime? {
-        if (entry == null && _media == null) return null
-        val media = if (entry != null) entry.getJSONObject("media") else _media!!
+        try {
+            if (entry == null && _media == null) return null
+            val media = if (entry != null) entry.getJSONObject("media") else _media!!
 
-        return RatedAnime(
-            id = media.getInt("id"),
-            rating = entry?.getDouble("score"),
-            avgScore = media.getInt("averageScore"),
-            status = entry?.getString("status"),
-            type = media.getString("type"),
-            format = media.getString("format"),
-            title = media.getJSONObject("title").getString("userPreferred"),
-            popularity = media.getInt("popularity"),
-            year = media.getInt("seasonYear"),
-            airStatus = media.getString("status"),
-            imgUrl = media.getJSONObject("coverImage").getString("extraLarge"),
-            color = media.getJSONObject("coverImage").getString("color"),
-            episodes = media.getInt("episodes")
-        )
+            return RatedAnime(
+                id = media.getInt("id"),
+                rating = entry?.getDouble("score"),
+                avgScore = media.getInt("averageScore"),
+                status = entry?.getString("status"),
+                type = media.getString("type"),
+                format = media.getString("format"),
+                title = media.getJSONObject("title").getString("userPreferred"),
+                popularity = media.getInt("popularity"),
+                year = media.getInt("seasonYear"),
+                airStatus = media.getString("status"),
+                imgUrl = media.getJSONObject("coverImage").getString("extraLarge"),
+                color = media.getJSONObject("coverImage").getString("color"),
+                episodes = media.getInt("episodes")
+            )
+        } catch (e: JSONException) {
+            Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+            Log.e("parseMedia", e.message ?: "json exception. no message provided")
+            return null
+        }
+
     }
 
     companion object {
-        val baseURL = "https://graphql.anilist.co"
+        const val BASEURL = "https://graphql.anilist.co"
         fun userListQuery(username: String, pageNum: Int) =
             "query {\n" +
                 "  Page(page: $pageNum) {\n" +
@@ -212,7 +223,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             onComplete: () -> Unit = {},
             query: String
         ) = object : StringRequest(
-            Method.POST, baseURL,
+            Method.POST, BASEURL,
             {
                 onSuccess(JSONObject(it))
                 onComplete()
