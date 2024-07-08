@@ -25,6 +25,8 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         onComplete: () -> Unit = {},
         pageNum: Int = 1
     ) {
+        ratedAnimeDao.deleteAll()
+        db.anilistReccDao().deleteAll()
         val request = request(
             onSuccess = {
                 val list = it.getJSONObject("data")
@@ -33,13 +35,16 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
                 //if media list is empty
                 if (list.length() < 1) {
-                    onSuccess()
-                    onComplete()
+                    fetchMostPopular(
+                        onSuccess = {
+                            onSuccess()
+                        },
+                        onComplete = onComplete
+                    )
                 } else {
                     for (i in 0..<list.length()) {
                         val entry = list.getJSONObject(i)
                         val parsed = parseMedia(entry = entry)!!
-                        ratedAnimeDao.deleteId(parsed.id)
                         ratedAnimeDao.insertAll(parsed)
 
                         parseRecs(
@@ -64,6 +69,30 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             query = userListQuery(username, 1)
         )
         volley.add(request)
+    }
+
+    private fun fetchMostPopular(
+        onSuccess: (RatedAnime) -> Unit = {},
+        onComplete: () -> Unit = {},
+    ) {
+        request(
+            onSuccess = {
+                val media = it.getJSONObject("data")
+                    .getJSONObject("Page")
+                    .getJSONObject("media")
+
+                val parsed = parseMedia(media = media)!!
+                ratedAnimeDao.insertAll(parsed)
+
+                onSuccess(parsed)
+                onComplete()
+            },
+            onError = {
+                Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                Log.e("fetch most popular", it.message ?: "no error message")
+            },
+            query = mostPopularQuery
+        ).also { volley.add(it) }
     }
 
     private fun parseRecs(parent: RatedAnime, edges: JSONArray) {
@@ -95,8 +124,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             onSuccess = {
                 //parse it
                 val media = it.getJSONObject("data").getJSONObject("Media")
-                val parsed = parseMedia(_media = media)!!
-                ratedAnimeDao.deleteId(parsed.id)
+                val parsed = parseMedia(media = media)!!
                 ratedAnimeDao.insertAll(parsed)
                 onSuccess(parsed)
             },
@@ -105,33 +133,33 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                 Log.e("Fetch and update media by ID", it.message ?: "no error message")
             }
-        )
+        ).also { volley.add(it) }
     }
 
     /**
      * @param entry the entry JSON object. null by default
-     * @param _media the media JSON object. null by default
+     * @param media the media JSON object. null by default
      * @return parsed RatedAnime object. Returns null if both parameters are null or not provided. Returns null if JSON objects are formatted unexpectedly
      */
-    private fun parseMedia(entry: JSONObject? = null, _media: JSONObject? = null): RatedAnime? {
+    private fun parseMedia(entry: JSONObject? = null, media: JSONObject? = null): RatedAnime? {
         try {
-            if (entry == null && _media == null) return null
-            val media = if (entry != null) entry.getJSONObject("media") else _media!!
+            if (entry == null && media == null) return null
+            val myMedia = if (entry != null) entry.getJSONObject("media") else media!!
 
             return RatedAnime(
-                id = media.getInt("id"),
+                id = myMedia.getInt("id"),
                 rating = entry?.getDouble("score"),
-                avgScore = media.getInt("averageScore"),
+                avgScore = myMedia.getInt("averageScore"),
                 status = entry?.getString("status"),
-                type = media.getString("type"),
-                format = media.getString("format"),
-                title = media.getJSONObject("title").getString("userPreferred"),
-                popularity = media.getInt("popularity"),
-                year = media.getInt("seasonYear"),
-                airStatus = media.getString("status"),
-                imgUrl = media.getJSONObject("coverImage").getString("extraLarge"),
-                color = media.getJSONObject("coverImage").getString("color"),
-                episodes = media.getInt("episodes")
+                type = myMedia.getString("type"),
+                format = myMedia.getString("format"),
+                title = myMedia.getJSONObject("title").getString("userPreferred"),
+                popularity = myMedia.getInt("popularity"),
+                year = myMedia.getInt("seasonYear"),
+                airStatus = myMedia.getString("status"),
+                imgUrl = myMedia.getJSONObject("coverImage").getString("extraLarge"),
+                color = myMedia.getJSONObject("coverImage").getString("color"),
+                episodes = myMedia.getInt("episodes")
             )
         } catch (e: JSONException) {
             Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
@@ -145,7 +173,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         const val BASEURL = "https://graphql.anilist.co"
         fun userListQuery(username: String, pageNum: Int) =
             "query {\n" +
-                "  Page(page: $pageNum) {\n" +
+                "  Page(page: $pageNum, perPage: 50) {\n" +
                 "    mediaList (userName: $username, type: ANIME) {\n" +
                 "      userId\n" +
                 "      score\n" +
@@ -213,6 +241,13 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 "          }\n" +
                 "        }\n" +
                 "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "}"
+        val mostPopularQuery = "query {\n" +
+                "  Page(page: 1, perPage: 1) {\n" +
+                "    media(sort: POPULARITY_DESC) {\n" +
+                "      popularity\n" +
                 "    }\n" +
                 "  }\n" +
                 "}"
