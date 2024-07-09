@@ -91,7 +91,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
                 Log.e("fetch most popular", it.message ?: "no error message")
             },
-            query = mostPopularQuery
+            query = MOST_POPULAR_QUERY
         ).also { volley.add(it) }
     }
 
@@ -243,7 +243,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 "    }\n" +
                 "  }\n" +
                 "}"
-        val mostPopularQuery = "query {\n" +
+        const val MOST_POPULAR_QUERY = "query {\n" +
                 "  Page(page: 1, perPage: 1) {\n" +
                 "    media(sort: POPULARITY_DESC) {\n" +
                 "      popularity\n" +
