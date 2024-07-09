@@ -10,10 +10,7 @@ import com.refractional.nextani.utils.database.model.RatedAnime
 @Dao
 interface AnilistReccDao {
     @Query("SELECT * FROM anilistrecc")
-    fun getAll(): List<RatedAnime>
-
-    @Query("SELECT * FROM anilistrecc WHERE id IN (:ids)")
-    fun getAllByID(ids: IntArray): List<RatedAnime>
+    fun getAll(): List<AnilistRecc>
 
     @Query("DELETE FROM anilistrecc WHERE 1=1")
     fun deleteAll()

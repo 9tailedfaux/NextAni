@@ -122,7 +122,6 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     ) {
         request(
             onSuccess = {
-                //parse it
                 val media = it.getJSONObject("data").getJSONObject("Media")
                 val parsed = parseMedia(media = media)!!
                 ratedAnimeDao.insertAll(parsed)
@@ -148,7 +147,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
             return RatedAnime(
                 id = myMedia.getInt("id"),
-                rating = entry?.getDouble("score"),
+                rating = entry?.getInt("score"),
                 avgScore = myMedia.getInt("averageScore"),
                 status = entry?.getString("status"),
                 type = myMedia.getString("type"),
@@ -176,7 +175,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 "  Page(page: $pageNum, perPage: 50) {\n" +
                 "    mediaList (userName: $username, type: ANIME) {\n" +
                 "      userId\n" +
-                "      score\n" +
+                "      score (format: POINT_100)\n" +
                 "      status\n" +
                 "      media {\n" +
                 "        id\n" +

@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 @Entity
 data class RatedAnime(
     @PrimaryKey val id: Int,
-    val rating: Double?,
+    val rating: Int?,
     val avgScore: Int,
     val status: String?,
     val type: String,
