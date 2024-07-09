@@ -21,7 +21,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     fun refreshUserData(
         username: String = "9tailedfaux",
         onSuccess: () -> Unit = {},
-        onError: (VolleyError) -> Unit = {},
+        onError: (String) -> Unit = {},
         onComplete: () -> Unit = {},
         pageNum: Int = 1
     ) {
@@ -49,7 +49,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
                         parseRecs(
                             parent = parsed,
-                            edges = entry.getJSONObject("media").getJSONObject("recommendations").getJSONArray("edges")
+                            edges = entry.getJSONObject("media").getJSONObjectOrNull("recommendations")?.getJSONArrayOrNull("edges")
                         )
                     }
                     refreshUserData(
@@ -62,7 +62,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 }
             },
             onError = {
-                Log.e("Refresh user data", it.message ?: "no error message")
+                Log.e("Refresh user data", it)
                 onError(it)
                 onComplete()
             },
@@ -88,14 +88,16 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 onComplete()
             },
             onError = {
-                Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
-                Log.e("fetch most popular", it.message ?: "no error message")
+                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                Log.e("fetch most popular", it)
             },
             query = MOST_POPULAR_QUERY
         ).also { volley.add(it) }
     }
 
-    private fun parseRecs(parent: RatedAnime, edges: JSONArray) {
+    private fun parseRecs(parent: RatedAnime, edges: JSONArray?) {
+        if (edges == null) return
+
         for (i in 0..<edges.length()) {
 
             val node = edges.getJSONObject(i).getJSONObject("node")
@@ -129,8 +131,8 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             },
             query = singleAnimeQuery(id),
             onError = {
-                Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
-                Log.e("Fetch and update media by ID", it.message ?: "no error message")
+                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                Log.e("Fetch and update media by ID", it)
             }
         ).also { volley.add(it) }
     }
@@ -147,18 +149,18 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
             return RatedAnime(
                 id = myMedia.getInt("id"),
-                rating = entry?.getInt("score"),
-                avgScore = myMedia.getInt("averageScore"),
-                status = entry?.getString("status"),
-                type = myMedia.getString("type"),
-                format = myMedia.getString("format"),
-                title = myMedia.getJSONObject("title").getString("userPreferred"),
-                popularity = myMedia.getInt("popularity"),
-                year = myMedia.getInt("seasonYear"),
-                airStatus = myMedia.getString("status"),
-                imgUrl = myMedia.getJSONObject("coverImage").getString("extraLarge"),
-                color = myMedia.getJSONObject("coverImage").getString("color"),
-                episodes = myMedia.getInt("episodes")
+                rating = entry?.getIntOrNull("score"),
+                avgScore = myMedia.getIntOrNull("averageScore"),
+                status = entry?.getStringOrNull("status"),
+                type = myMedia.getStringOrNull("type"),
+                format = myMedia.getStringOrNull("format"),
+                title = myMedia.getJSONObjectOrNull("title")?.getStringOrNull("userPreferred"),
+                popularity = myMedia.optInt("popularity"),
+                year = myMedia.getIntOrNull("seasonYear"),
+                airStatus = myMedia.getStringOrNull("status"),
+                imgUrl = myMedia.getJSONObjectOrNull("coverImage")?.getStringOrNull("extraLarge"),
+                color = myMedia.getJSONObjectOrNull("coverImage")?.getStringOrNull("color"),
+                episodes = myMedia.getIntOrNull("episodes")
             )
         } catch (e: JSONException) {
             Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
@@ -245,7 +247,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 "}"
         const val MOST_POPULAR_QUERY = "query {\n" +
                 "  Page(page: 1, perPage: 1) {\n" +
-                "    media(sort: POPULARITY_DESC) {\n" +
+                "    media(sort: POPULARITY_DESC, type: ANIME) {\n" +
                 "      popularity\n" +
                 "    }\n" +
                 "  }\n" +
@@ -253,17 +255,22 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
         fun request(
             onSuccess: (JSONObject) -> Unit,
-            onError: (VolleyError) -> Unit = {},
+            onError: (String) -> Unit = {},
             onComplete: () -> Unit = {},
             query: String
         ) = object : StringRequest(
             Method.POST, BASEURL,
             {
-                onSuccess(JSONObject(it))
+                val result = JSONObject(it)
+                if (result.has("errors")) {
+                    onError(result.optJSONArray("errors")?.optJSONObject(0)?.optString("message") ?: "unknown graphql query error")
+                } else {
+                    onSuccess(result)
+                }
                 onComplete()
             },
             {
-                onError(it)
+                onError(it.message ?: "unknown http error")
                 onComplete()
             }
         ) {
@@ -271,6 +278,38 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 return hashMapOf(
                     Pair("query", query),
                 )
+            }
+        }
+
+        fun JSONObject.getIntOrNull(name: String): Int? {
+            return try {
+                getInt(name)
+            } catch (e: JSONException) {
+                null
+            }
+        }
+
+        fun JSONObject.getJSONObjectOrNull(name: String): JSONObject? {
+            return try {
+                getJSONObject(name)
+            } catch (e: JSONException) {
+                null
+            }
+        }
+
+        fun JSONObject.getStringOrNull(name: String): String? {
+            return try {
+                getString(name)
+            } catch (e: JSONException) {
+                null
+            }
+        }
+
+        fun JSONObject.getJSONArrayOrNull(name: String): JSONArray? {
+            return try {
+                getJSONArray(name)
+            } catch (e: JSONException) {
+                null
             }
         }
     }
