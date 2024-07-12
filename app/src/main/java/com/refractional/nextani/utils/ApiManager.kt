@@ -17,6 +17,17 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     private val volley = Volley.newRequestQueue(context)
     private val ratedAnimeDao = db.ratedAnimeDao()
     //FIXME my username is in here as a default
+    /**
+     * Top-level function for refreshing all user data.
+     * Calling this function clears the database of all RatedAnime and AnilistRecc, regardless of success.
+     * If successful, it will store all user anime in the database as RatedAnime, all recommendations as AnilistRecc, and AniList's single most popular anime as RatedAnime. It will then call onSuccess.
+     * If unsuccessful, it will log the error and call onError.
+     * @param username the AniList username of the user whose list is being fetched.
+     * @param onSuccess (optional) a function detailing what to do if this function succeeds.
+     * @param onComplete (optional) a function detailing what to do when this function finishes.
+     * @param onError (optional) a function detailing what to do if this function encounters an error.
+     * @param pageNum (optional, default=1) the page number of results to fetch. This function is recursive and will continue from this point until it has read all pages containing data.
+     */
     fun refreshUserData(
         username: String = "9tailedfaux",
         onSuccess: () -> Unit = {},
@@ -89,6 +100,13 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         volley.add(request)
     }
 
+    /**
+     * Function for fetching AniList's most popular anime.
+     * If successful, it will store the fetched anime in the database as a RatedAnime object.
+     * If the same anime already exists in the database, it will still fetch from the AniList API but will not modify the database.
+     * @param onSuccess (optional) function detailing what to do with the parsed RatedAnime object if successful.
+     * @param onComplete (optional) function detailing what to do when this process ends.
+     */
     private fun fetchMostPopular(
         onSuccess: (RatedAnime) -> Unit = {},
         onComplete: () -> Unit = {},
@@ -120,6 +138,13 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         ).also { volley.add(it) }
     }
 
+    /**
+     * Function for parsing recommendations.
+     * If successful, it will store all recommendations in the database as AnilistRecc objects.
+     * If unsuccessful, it will log the error.
+     * @param parent the RatedAnime representing the anime that these recommendations originate from.
+     * @param edges the edges JSONArray containing nodes containing mediaRecommendations. If this is null, the function will do nothing.
+     */
     private fun parseRecs(parent: RatedAnime, edges: JSONArray?) {
         if (edges == null) return
 
@@ -148,10 +173,20 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         }
     }
 
+    /**
+     * Fetches an anime from the AniList API matching the given id.
+     * If successful, stores the anime as a RatedAnime in the database.
+     * If an anime by this ID already exists in the database, the function will return without making any request to the AniList API.
+     * If unsuccessful, catches and logs the error.
+     * @param id the AniList ID of the anime to fetch.
+     * @param onSuccess (optional) a function detailing what to do with the parsed RatedAnime.
+     */
     private fun fetchAndUpdateMediaById(
         id: Int,
         onSuccess: (RatedAnime) -> Unit = {}
     ) {
+        if (ratedAnimeDao.getAllByID(intArrayOf(id)).isNotEmpty()) return
+
         request(
             onSuccess = {
                 val media = it.getJSONObject("data").getJSONObject("Media")
@@ -168,9 +203,10 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     }
 
     /**
+     * Function for parsing a given entry or media JSONObject into a RatedAnime object.
      * @param entry the entry JSON object. null by default
      * @param media the media JSON object. null by default
-     * @return parsed RatedAnime object. Returns null if both parameters are null or not provided. Returns null if JSON objects are formatted unexpectedly
+     * @return parsed RatedAnime object. Returns null if both parameters are null or not provided. Returns null if a JSONException is thrown
      */
     private fun parseMedia(entry: JSONObject? = null, media: JSONObject? = null): RatedAnime? {
         try {
