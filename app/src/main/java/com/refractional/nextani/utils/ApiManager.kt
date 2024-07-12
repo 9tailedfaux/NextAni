@@ -29,9 +29,18 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         db.anilistReccDao().deleteAll()
         val request = request(
             onSuccess = {
-                val list = it.getJSONObject("data")
-                    .getJSONObject("Page")
-                    .getJSONArray("mediaList")
+                val list = it.optJSONObject("data")
+                    ?.optJSONObject("Page")
+                    ?.optJSONArray("mediaList")
+
+                if (list == null) {
+                    val tag = "refreshUserData request onSuccess"
+                    val msg = "JSON parsing error"
+                    onError("$msg in $tag")
+                    Log.e(tag, msg)
+                    onComplete()
+                    return@request
+                }
 
                 //if media list is empty
                 if (list.length() < 1) {
@@ -49,7 +58,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
                         parseRecs(
                             parent = parsed,
-                            edges = entry.getJSONObject("media").getJSONObjectOrNull("recommendations")?.getJSONArrayOrNull("edges")
+                            edges = entry.optJSONObject("media")?.optJSONObject("recommendations")?.optJSONArray("edges")
                         )
                     }
                     refreshUserData(
@@ -100,8 +109,8 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
         for (i in 0..<edges.length()) {
 
-            val node = edges.getJSONObject(i).getJSONObject("node")
-            val id = node.getJSONObject("mediaRecommendation").getInt("id")
+            val node = edges.optJSONObject(i).optJSONObject("node")
+            val id = node?.optJSONObject("mediaRecommendation")?.getIntOrNull("id") ?: return
 
             fetchAndUpdateMediaById(
                 id,
@@ -154,12 +163,12 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 status = entry?.getStringOrNull("status"),
                 type = myMedia.getStringOrNull("type"),
                 format = myMedia.getStringOrNull("format"),
-                title = myMedia.getJSONObjectOrNull("title")?.getStringOrNull("userPreferred"),
+                title = myMedia.optJSONObject("title")?.getStringOrNull("userPreferred"),
                 popularity = myMedia.optInt("popularity"),
                 year = myMedia.getIntOrNull("seasonYear"),
                 airStatus = myMedia.getStringOrNull("status"),
-                imgUrl = myMedia.getJSONObjectOrNull("coverImage")?.getStringOrNull("extraLarge"),
-                color = myMedia.getJSONObjectOrNull("coverImage")?.getStringOrNull("color"),
+                imgUrl = myMedia.optJSONObject("coverImage")?.getStringOrNull("extraLarge"),
+                color = myMedia.optJSONObject("coverImage")?.getStringOrNull("color"),
                 episodes = myMedia.getIntOrNull("episodes")
             )
         } catch (e: JSONException) {
@@ -289,25 +298,9 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             }
         }
 
-        fun JSONObject.getJSONObjectOrNull(name: String): JSONObject? {
-            return try {
-                getJSONObject(name)
-            } catch (e: JSONException) {
-                null
-            }
-        }
-
         fun JSONObject.getStringOrNull(name: String): String? {
             return try {
                 getString(name)
-            } catch (e: JSONException) {
-                null
-            }
-        }
-
-        fun JSONObject.getJSONArrayOrNull(name: String): JSONArray? {
-            return try {
-                getJSONArray(name)
             } catch (e: JSONException) {
                 null
             }
