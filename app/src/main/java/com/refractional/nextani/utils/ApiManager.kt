@@ -3,7 +3,6 @@ package com.refractional.nextani.utils
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
-import com.android.volley.VolleyError
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import com.refractional.nextani.utils.database.DbManager
@@ -35,7 +34,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
 
                 if (list == null) {
                     val tag = "refreshUserData request onSuccess"
-                    val msg = "JSON parsing error"
+                    val msg = "JSON parsing error on $it"
                     onError("$msg in $tag")
                     Log.e(tag, msg)
                     onComplete()
@@ -52,8 +51,18 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                     )
                 } else {
                     for (i in 0..<list.length()) {
-                        val entry = list.getJSONObject(i)
-                        val parsed = parseMedia(entry = entry)!!
+                        val entry = list.optJSONObject(i)
+                        val parsed = parseMedia(entry = entry)
+
+                        if (parsed == null) {
+                            val tag = "refreshUserData request onSuccess"
+                            val msg = "JSON parsing error on $list"
+                            onError("$msg in $tag")
+                            Log.e(tag, msg)
+                            onComplete()
+                            return@request
+                        }
+
                         ratedAnimeDao.insertAll(parsed)
 
                         parseRecs(
@@ -86,11 +95,18 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     ) {
         request(
             onSuccess = {
-                val media = it.getJSONObject("data")
-                    .getJSONObject("Page")
-                    .getJSONObject("media")
+                val media = it.optJSONObject("data")
+                    ?.optJSONObject("Page")
+                    ?.optJSONObject("media")
 
-                val parsed = parseMedia(media = media)!!
+                val parsed = parseMedia(media = media)
+
+                if (parsed == null) {
+                    onComplete()
+                    Log.e("fetchMostPopular request onSuccess", "JSON parsing error on $it")
+                    return@request
+                }
+
                 ratedAnimeDao.insertAll(parsed)
 
                 onSuccess(parsed)
@@ -98,7 +114,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
             },
             onError = {
                 Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-                Log.e("fetch most popular", it)
+                Log.e("fetchMostPopular request onError", it)
             },
             query = MOST_POPULAR_QUERY
         ).also { volley.add(it) }
@@ -110,7 +126,12 @@ class ApiManager(private val context: Context, private val db: DbManager) {
         for (i in 0..<edges.length()) {
 
             val node = edges.optJSONObject(i).optJSONObject("node")
-            val id = node?.optJSONObject("mediaRecommendation")?.getIntOrNull("id") ?: return
+            val id = node?.optJSONObject("mediaRecommendation")?.getIntOrNull("id")
+
+            if (id == null) {
+                Log.e("parseReccs", "JSON parse error on ${node ?: "edges[$i]"}")
+                return
+            }
 
             fetchAndUpdateMediaById(
                 id,
@@ -154,7 +175,7 @@ class ApiManager(private val context: Context, private val db: DbManager) {
     private fun parseMedia(entry: JSONObject? = null, media: JSONObject? = null): RatedAnime? {
         try {
             if (entry == null && media == null) return null
-            val myMedia = if (entry != null) entry.getJSONObject("media") else media!!
+            val myMedia = if (entry != null) entry.optJSONObject("media") else media!!
 
             return RatedAnime(
                 id = myMedia.getInt("id"),
@@ -238,22 +259,6 @@ class ApiManager(private val context: Context, private val db: DbManager) {
                 "  }\n" +
                 "}"
 
-        fun userQuery(username: String, pageNum: Int) =
-                "query {\n" +
-                "  Page(page: $pageNum) {\n" +
-                "    users(name: \"$username\") {\n" +
-                "      id\n" +
-                "      statistics {\n" +
-                "        anime {\n" +
-                "          scores (sort: MEAN_SCORE_DESC) {\n" +
-                "            score\n" +
-                "            mediaIds\n" +
-                "          }\n" +
-                "        }\n" +
-                "      }\n" +
-                "    }\n" +
-                "  }\n" +
-                "}"
         const val MOST_POPULAR_QUERY = "query {\n" +
                 "  Page(page: 1, perPage: 1) {\n" +
                 "    media(sort: POPULARITY_DESC, type: ANIME) {\n" +
